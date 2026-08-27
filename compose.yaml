@@ -1,7 +1,25 @@
-﻿services:
+﻿networks:
+  app:
+    driver: bridge
+
+services:
   authorizationmicroservices:
     image: authorizationmicroservices
     build:
       context: .
       dockerfile: AuthorizationMicroservices/Dockerfile
+    ports:
+      - "5221:8080"
+    networks:
+      - app
+
+  business:
+    image: business
+    build:
+      context: .
+      dockerfile: business/Dockerfile
+    ports:
+      - "5222:8080"
+    networks:
+      - app
 
