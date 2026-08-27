@@ -3,11 +3,27 @@
     driver: bridge
 
 services:
+  
+  nginx:
+    image: nginx
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    depends_on:
+      - authorizationmicroservices
+      - business
+    ports:
+      - "80:80"
+    networks:
+      - app
+  
   authorizationmicroservices:
     image: authorizationmicroservices
     build:
       context: .
       dockerfile: AuthorizationMicroservices/Dockerfile
+    environment:
+        - ASPNETCORE_ENVIRONMENT=Development
     ports:
       - "5221:8080"
     networks:
@@ -20,6 +36,8 @@ services:
       dockerfile: business/Dockerfile
     ports:
       - "5222:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
     networks:
       - app
 

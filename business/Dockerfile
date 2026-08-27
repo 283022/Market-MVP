@@ -20,4 +20,5 @@ RUN dotnet publish "./business.csproj" -c $BUILD_CONFIGURATION -o /app/publish /
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY ["AuthorizationMicroservices/appsettings.Development.json", "appsettings.Development.json"]
 ENTRYPOINT ["dotnet", "business.dll"]
