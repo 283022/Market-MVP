@@ -1,0 +1,7 @@
+﻿services:
+  authorizationmicroservices:
+    image: authorizationmicroservices
+    build:
+      context: .
+      dockerfile: AuthorizationMicroservices/Dockerfile
+
