@@ -36,6 +36,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
+app.UseAuthorization();
 app.MapGet("/", () => "Hello World!");
 app.MapGet("/info", () => "hi").RequireAuthorization();
 app.MapGet("/business",
@@ -44,3 +45,4 @@ app.MapGet("/business",
         var claim = context.User.Claims;
         return Results.Ok(claim);
     }).RequireAuthorization();
+app.Run();
