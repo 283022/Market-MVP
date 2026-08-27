@@ -44,3 +44,4 @@ app.MapGet("/business",
         var claim = context.User.Claims;
         return Results.Ok(claim);
     }).RequireAuthorization();
+app.Run();
