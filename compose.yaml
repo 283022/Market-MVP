@@ -41,3 +41,9 @@ services:
     networks:
       - app
 
+  menuservices:
+    image: menuservices
+    build:
+      context: .
+      dockerfile: MenuServices/Dockerfile
+
