@@ -6,7 +6,7 @@ using MenuServices.Repository;
 
 namespace MenuServices.Services;
 
-public class ProductService(ProductRepository repository, UnitOfWorkEfCore unitOfWork)
+public class ProductService(UnitOfWorkEfCore unitOfWork)
 {
     private readonly UnitOfWorkEfCore _unitOfWork = unitOfWork;
 

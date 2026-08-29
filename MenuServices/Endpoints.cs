@@ -18,17 +18,6 @@ public static class Endpoints
         {
             try
             {
-                // Получаем PizzeriaId из JWT (или из заголовка для тестов)
-                var pizzeriaIdClaim = context.User.FindFirst("pizzeria_id")?.Value;
-                if (string.IsNullOrEmpty(pizzeriaIdClaim))
-                {
-                    // Для тестов можно использовать заголовок X-Pizzeria-Id
-                    pizzeriaIdClaim = context.Request.Headers["X-Pizzeria-Id"].FirstOrDefault();
-                }
-
-                if (!Guid.TryParse(pizzeriaIdClaim, out var pizzeriaId))
-                    return Results.BadRequest(new { error = "Invalid or missing PizzeriaId" });
-
                 var result = await service.GetMenuAsync(queryParams);
                 return Results.Ok(result);
             }
@@ -66,15 +55,6 @@ public static class Endpoints
         {
             try
             {
-                // Получаем PizzeriaId из JWT
-                var pizzeriaIdClaim = context.User.FindFirst("pizzeria_id")?.Value;
-                if (string.IsNullOrEmpty(pizzeriaIdClaim) || !Guid.TryParse(pizzeriaIdClaim, out var pizzeriaId))
-                    return Results.BadRequest(new { error = "Invalid or missing PizzeriaId" });
-
-                // Если в DTO не передана PizzeriaId — берем из JWT
-                if (dto.PizzeriaId == Guid.Empty)
-                    dto.PizzeriaId = pizzeriaId;
-
                 var product = await service.CreateAsync(dto);
                 return Results.Created($"/api/menu/{product.Id}", product);
             }
@@ -134,7 +114,8 @@ public static class Endpoints
             try
             {
                 await service.ToggleStopAsync(id, dto.IsStopped);
-                return Results.Ok(new { id, isStopped = dto.IsStopped, message = dto.IsStopped ? "Product stopped" : "Product resumed" });
+                return Results.Ok(new
+                    { id, isStopped = dto.IsStopped, message = dto.IsStopped ? "Product stopped" : "Product resumed" });
             }
             catch (KeyNotFoundException)
             {
@@ -145,29 +126,7 @@ public static class Endpoints
                 return Results.Problem(ex.Message);
             }
         }).RequireAuthorization("AdminOrCurator");
-
-        // GET /api/menu/categories — получить все категории
-        group.MapGet("/categories", async (
-            ProductService service,
-            HttpContext context) =>
-        {
-            try
-            {
-                var pizzeriaIdClaim = context.User.FindFirst("pizzeria_id")?.Value;
-                if (!Guid.TryParse(pizzeriaIdClaim, out var pizzeriaId))
-                    return Results.BadRequest(new { error = "Invalid or missing PizzeriaId" });
-
-                // Здесь можно добавить метод в сервис для получения категорий
-                // Для простоты можно вернуть список из конфигурации или БД
-                var categories = new[] { "combo", "drinks", "snacks", "main", "desserts" };
-                return Results.Ok(categories);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
-        });
-
+        
         return app;
     }
 }

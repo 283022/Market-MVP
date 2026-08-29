@@ -9,21 +9,17 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// === API ===
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
-// === DB ===
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
-// === DI ===
 builder.Services.AddScoped<UnitOfWorkEfCore>();
 builder.Services.AddScoped<ProductService>();
 
-// === JWT ===
 var secret = builder.Configuration["AppSettings:Token"] 
     ?? throw new InvalidOperationException("JWT Token is not configured");
 var issuer = builder.Configuration["JwtIssuer"];
@@ -48,15 +44,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // === Авторизация (политики) ===
 builder.Services.AddAuthorization(options =>
 {
-    // 1. Простая роль
+    //Простая роль
     options.AddPolicy("UserIsAdmin", policy =>
         policy.RequireRole("Admin"));
 
-    // 2. Админ или Куратор
+    //Админ или Куратор
     options.AddPolicy("UserIsAdminOrCurator", policy =>
         policy.RequireRole("Admin", "Curator"));
 
-    // 3. Только аутентифицированный пользователь
+    //Только аутентифицированный пользователь
     options.AddPolicy("AuthenticatedUser", policy =>
         policy.RequireAuthenticatedUser());
 });
@@ -71,8 +67,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAuthentication();  // ← Проверяет JWT и создает User
-app.UseAuthorization();   // ← Проверяет политики
+app.UseAuthentication();  // Проверяет JWT и создает User
+app.UseAuthorization();   // Проверяет политики
 
 app.AddEndpoints();
 
