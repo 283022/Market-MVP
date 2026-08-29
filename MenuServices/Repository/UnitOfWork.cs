@@ -4,6 +4,7 @@ namespace MenuServices.Repository;
 
 public class UnitOfWorkEfCore(ApplicationDbContext context): IUnitOfWork
 {
+    public ProductRepository productRepository { get; private set; } = new ProductRepository(context); 
     private readonly ApplicationDbContext _context = context;
     
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
