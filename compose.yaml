@@ -52,3 +52,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
     networks:
       - app
+  cartservice:
+    image: cartservice
+    build:
+      context: .
+      dockerfile: CartService/Dockerfile
+
