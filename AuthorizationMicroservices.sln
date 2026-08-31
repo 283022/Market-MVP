@@ -11,7 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "business", "business\busine
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MenuServices", "MenuServices\MenuServices.csproj", "{237C7CC9-9BFF-4E99-B524-D74764699D23}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CartService", "CartService\CartService.csproj", "{F5A3BB96-0D7C-4D44-AC72-09BC80ADA90A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CartServices", "CartServices\CartServices.csproj", "{F5A3BB96-0D7C-4D44-AC72-09BC80ADA90A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
