@@ -58,3 +58,9 @@ services:
       context: .
       dockerfile: CartService/Dockerfile
 
+  orderservices:
+    image: orderservices
+    build:
+      context: .
+      dockerfile: OrderServices/Dockerfile
+
