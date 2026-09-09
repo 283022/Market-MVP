@@ -22,13 +22,28 @@ public class OrderService(UnitOfWork unitOfWork)
         return order;
     }
     
-    public async Task CreateOrder(Guid userid)
+    public async Task<Order> CreateOrderAsync(Guid userId, CreateOrderRequest request)
     {
-        var order = Order.Create(userid);
-        if(order is null)
-            throw new Exception("Cannot create order");
+        // 1. Создаем сущности OrderItem
+        var items = request.Items.Select(i =>  OrderItem.Create(
+            productId: i.ProductId,
+            productName: i.ProductName,
+            quantity: i.Quantity,
+            unitPrice: i.UnitPrice
+        )).ToList();
+
+        // 2. Создаем заказ
+        var order = Order.Create(
+            userId: userId,
+            items: items,
+            comment: request.Comment
+        );
+
+        // 3. Сохраняем в БД
         await _unitOfWork.Repository.CreateOrder(order);
         await _unitOfWork.SaveChangesAsync();
+
+        return order;
     }
 
     public async Task<OrderStatus> GetStatus(Guid orderId, Guid userid)
@@ -66,3 +81,4 @@ public class OrderService(UnitOfWork unitOfWork)
         
     }
 }
+
