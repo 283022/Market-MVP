@@ -126,6 +126,23 @@ public static class Endpoints
                 return Results.Problem(ex.Message);
             }
         }).RequireAuthorization("AdminOrCurator");
+
+        group.MapPost("/validate",
+            async (
+                [FromBody] List<Guid> productIds,
+                ProductService service) =>
+            {
+                a;
+                return Results.Ok(
+                    new ValidateProductsResponse);
+            });
+        
+        group.MapPost("/details", async (
+            [FromBody] List<int> productIds,
+            ProductService service) =>
+        {
+            a;
+        });
         
         return app;
     }
