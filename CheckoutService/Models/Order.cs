@@ -1,4 +1,4 @@
-﻿namespace CheckoutService.Models;
+﻿namespace CheckoutServices.Models;
 
 public class Order
 {

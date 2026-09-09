@@ -10,6 +10,7 @@ using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
 
+a
 // JWT настройки
 var jwtSecret = builder.Configuration["Jwt:Secret"] 
                 ?? throw new InvalidOperationException("JWT Secret is not configured");

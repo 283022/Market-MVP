@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CartServices", "CartService
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderServices", "OrderServices\OrderServices.csproj", "{052F3627-E6BE-451D-A021-BD3A3AED4B08}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheckoutService", "CheckoutService\CheckoutService.csproj", "{98699C4E-10F8-45B2-A09B-70751987922D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,5 +43,9 @@ Global
 		{052F3627-E6BE-451D-A021-BD3A3AED4B08}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{052F3627-E6BE-451D-A021-BD3A3AED4B08}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{052F3627-E6BE-451D-A021-BD3A3AED4B08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{98699C4E-10F8-45B2-A09B-70751987922D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{98699C4E-10F8-45B2-A09B-70751987922D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{98699C4E-10F8-45B2-A09B-70751987922D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{98699C4E-10F8-45B2-A09B-70751987922D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

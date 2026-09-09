@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace CheckoutService;
+namespace CheckoutService.DTOs;
 
 public record CheckOutDto(
     [Required] List<CheckOutItemDto> Items,
@@ -13,3 +13,10 @@ public record CheckOutItemDto(
     [Required] bool IsSelected
 );
 
+
+public class CheckoutResult
+{
+    public Guid OrderId { get; set; }
+    public string PaymentUrl { get; set; }
+    public DateTime ExpiresAt { get; set; }
+}
