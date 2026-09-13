@@ -1,9 +1,9 @@
-﻿using MenuServices.Contracts.Clients;
-using MenuServices.Contracts.DTOs;
+﻿using System.Net;
+using FluentResults;
 
 namespace CartServices.Clients;
 
-public class MenuClient : IMenuServiceClient
+public class MenuClient
 {
     private readonly HttpClient _client;
     private readonly ILogger<MenuClient> _logger;
@@ -13,45 +13,58 @@ public class MenuClient : IMenuServiceClient
         _client = client;
         _logger = logger;
     }
-    
-    public async Task<ProductDto?> GetProductAsync(Guid productId)
+
+    public async Task<Result<ProductDto?>> GetProductAsync(Guid productId)
     {
         try
         {
             var response = await _client.GetAsync($"/api/menu/{productId}");
-            
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return null;
-            
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<ProductDto>();
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return Result.Ok<ProductDto?>(null);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Menu service returned {StatusCode}", response.StatusCode);
+                return Result.Fail<ProductDto?>(
+                    new ExternalServiceError($"Menu service returned {response.StatusCode}"));
+            }
+
+            var product = await response.Content.ReadFromJsonAsync<ProductDto>();
+            return Result.Ok(product);
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Failed to get product {ProductId}", productId);
-            throw;
+            _logger.LogError(ex, "Menu service unavailable");
+            return Result.Fail<ProductDto?>(
+                new ExternalServiceError($"Menu service unavailable: {ex.Message}"));
         }
     }
 
-    public async Task<List<ProductDto>> GetProductsBatchAsync(List<Guid> productIds)
+    public async Task<Result<List<ProductDto>>> GetProductsBatchAsync(List<Guid> productIds)
     {
         try
         {
             var request = new { ProductIds = productIds };
             var response = await _client.PostAsJsonAsync("/api/menu/batch", request);
-            
+
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Failed to get products batch: {StatusCode}", response.StatusCode);
-                return new List<ProductDto>();
+                _logger.LogWarning("Menu batch returned {StatusCode}", response.StatusCode);
+                return Result.Fail<List<ProductDto>>(
+                    new ExternalServiceError($"Menu service returned {response.StatusCode}"));
             }
-            
-            return await response.Content.ReadFromJsonAsync<List<ProductDto>>() ?? new List<ProductDto>();
+
+            var products = await response.Content.ReadFromJsonAsync<List<ProductDto>>()
+                           ?? new List<ProductDto>();
+
+            return Result.Ok(products);
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Failed to get products batch");
-            throw;
+            _logger.LogError(ex, "Menu service unavailable");
+            return Result.Fail<List<ProductDto>>(
+                new ExternalServiceError($"Menu service unavailable: {ex.Message}"));
         }
     }
 }

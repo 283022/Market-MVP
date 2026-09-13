@@ -12,116 +12,95 @@ public static class Endpoints
         var group = app.MapGroup("/api/cart");
 
         // GET /api/cart/my — получить корзину
-        group.MapGet("/my", async (
-            HttpContext context,
-            CartService service) =>
+        group.MapGet("/my", async (HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
-
-            var cart = await service.GetCartAsync(userId, sessionId);
-            return Results.Ok(cart);
+            var (userId, sessionId) = Extract(context);
+            var result = await service.GetCartAsync(userId, sessionId);
+            return result.ToHttpResult();
         });
 
-        // GET /api/cart/count — получить количество товаров в корзине
-        group.MapGet("/count", async (
-            HttpContext context,
-            CartService service) =>
+        // GET /api/cart/count — количество товаров в корзине
+        group.MapGet("/count", async (HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
+            var (userId, sessionId) = Extract(context);
+            var result = await service.GetCartCountAsync(userId, sessionId);
 
-            var count = await service.GetCartCountAsync(userId, sessionId);
-            return Results.Ok(new { count });
+            return result.ToHttpResult(count => Results.Ok(new { count }));
         });
 
         // POST /api/cart/items — добавить товар
         group.MapPost("/items", async (
-            AddCartItemRequest request,
-            HttpContext context,
-            CartService service) =>
+            AddCartItemRequest request, HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
-
-            var cart = await service.AddItemAsync(userId, sessionId, request);
-            return Results.Ok(cart);
+            var (userId, sessionId) = Extract(context);
+            var result = await service.AddItemAsync(userId, sessionId, request);
+            return result.ToHttpResult();
         });
 
         // PUT /api/cart/items/{id} — обновить количество
         group.MapPut("/items/{id:guid}", async (
-            Guid id,
-            UpdateCartItemRequest request,
-            HttpContext context,
-            CartService service) =>
+            Guid id, UpdateCartItemRequest request, HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
+            var (userId, sessionId) = Extract(context);
+            var result = await service.UpdateItemQuantityAsync(
+                userId, sessionId, id, request.Quantity);
 
-            await service.UpdateItemQuantityAsync(userId, sessionId, id, request.Quantity);
-            return Results.Ok();
+            return result.ToHttpResult(() => Results.NoContent());
         });
 
         // DELETE /api/cart/items/{id} — удалить товар
         group.MapDelete("/items/{id:guid}", async (
-            Guid id,
-            HttpContext context,
-            CartService service) =>
+            Guid id, HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
+            var (userId, sessionId) = Extract(context);
+            var result = await service.RemoveItemAsync(userId, sessionId, id);
 
-            await service.RemoveItemAsync(userId, sessionId, id);
-            return Results.Ok();
+            return result.ToHttpResult(() => Results.NoContent());
         });
 
-        // DELETE /api/cart/items — удалить несколько товаров (выбор части корзины)
+        // DELETE /api/cart/items — удалить несколько товаров
         group.MapDelete("/items", async (
-            [FromBody] RemoveItemsRequest request,
-            HttpContext context,
-            CartService service) =>
+            [FromBody] RemoveItemsRequest request, HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
+            var (userId, sessionId) = Extract(context);
+            var result = await service.RemoveItemsAsync(
+                userId, sessionId, request.ItemIds);
 
-            await service.RemoveItemsAsync(userId, sessionId, request.ItemIds);
-            return Results.Ok();
+            return result.ToHttpResult(() => Results.NoContent());
         });
-
 
         // DELETE /api/cart/clear — очистить корзину
-        group.MapDelete("/clear", async (
-            HttpContext context,
-            CartService service) =>
+        group.MapDelete("/clear", async (HttpContext context, CartService service) =>
         {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
+            var (userId, sessionId) = Extract(context);
+            var result = await service.ClearCartAsync(userId, sessionId);
 
-            await service.ClearCartAsync(userId, sessionId);
-            return Results.NoContent();
+            return result.ToHttpResult(() => Results.NoContent());
         });
-        
-        // POST /api/cart/merge — объединить анонимную корзину с пользовательской
-        group.MapPost("/merge", async (
-            HttpContext context,
-            CartService service) =>
-        {
-            var userId = GetUserId(context);
-            var sessionId = context.Items["CartSessionId"]?.ToString();
 
-            if (userId == null)
+        // POST /api/cart/merge — объединить анонимную корзину с пользовательской
+        group.MapPost("/merge", async (HttpContext context, CartService service) =>
+        {
+            var (userId, sessionId) = Extract(context);
+
+            if (userId is null)
                 return Results.Unauthorized();
 
-            await service.MergeCartsAsync(userId.Value, sessionId);
-            return Results.Ok();
-        }).RequireAuthorization(JwtBearerDefaults.AuthenticationScheme); 
+            var result = await service.MergeCartsAsync(userId.Value, sessionId);
+            return result.ToHttpResult(() => Results.NoContent());
+        }).RequireAuthorization(JwtBearerDefaults.AuthenticationScheme);
 
         return app;
     }
 
-    private static Guid? GetUserId(HttpContext context)
+    private static (Guid? UserId, string? SessionId) Extract(HttpContext context)
     {
         var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
+        Guid? userId = Guid.TryParse(userIdClaim, out var parsed) && parsed != Guid.Empty
+            ? parsed
+            : null;
+
+        var sessionId = context.Items["CartSessionId"]?.ToString();
+        return (userId, sessionId);
     }
 }

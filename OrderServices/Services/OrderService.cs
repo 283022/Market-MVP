@@ -8,7 +8,7 @@ public class OrderService(UnitOfWork unitOfWork)
 {
     private readonly UnitOfWork _unitOfWork = unitOfWork;
 
-    public async Task<Result<List<Order>>> GetUserOrdersById(Guid userId)
+    public async Task<Result<IReadOnlyList<Order>>> GetUserOrdersById(Guid userId)
     {
         var orders = await _unitOfWork.Repository.GetOrdersByUserId(userId);
         return Result.Ok(orders);
@@ -39,7 +39,7 @@ public class OrderService(UnitOfWork unitOfWork)
 
         var order = Order.Create(userId, items, request.Comment);
 
-        await _unitOfWork.Repository.CreateOrder(order);
+        await _unitOfWork.Repository.AddAsync(order);
         await _unitOfWork.SaveChangesAsync();
 
         return Result.Ok(order);

@@ -2,7 +2,7 @@
 
 public class User
 {
-    public Guid Id { get; set; } = new Guid();
+    public Guid Id { get; set; }
     public string Username { get; set; }
     public string Email { get; set; }
     public string HashPasswd { get; set; }
@@ -14,6 +14,7 @@ public class User
         HashPasswd = hashPasswd;
     }
     
+    //TODO: смоделировать валидацию email,password, username
     public static User Create(string username, string email, string hashPasswd)
     {
         return new User(username, email, hashPasswd);

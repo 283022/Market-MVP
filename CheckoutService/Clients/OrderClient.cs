@@ -1,8 +1,10 @@
-﻿using CheckoutService.DTOs;
+﻿using System.Net.Http.Json;
+using CheckoutService.DTOs;
+using FluentResults;
 
 namespace CheckoutService.Clients;
 
-public class OrderClient 
+public class OrderClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<OrderClient> _logger;
@@ -14,11 +16,37 @@ public class OrderClient
         _httpClient.BaseAddress = new Uri("http://order-service:8080/");
     }
 
-    public async Task<OrderResponse> CreateOrderAsync(Guid userId, CreateOrderRequestDto request)
+    public async Task<Result<OrderResponse>> CreateOrderAsync(
+        Guid userId, CreateOrderRequestDto request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"/api/orders/create?userId={userId}", request);
-        response.EnsureSuccessStatusCode();
-        a
-        return await response.Content.ReadFromJsonAsync<OrderResponse>();
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/orders/create?userId={userId}", request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning(
+                    "Order service returned {StatusCode}: {Body}",
+                    response.StatusCode, body);
+
+                return Result.Fail<OrderResponse>(
+                    new ExternalServiceError($"Order service returned {response.StatusCode}: {body}"));
+            }
+
+            var order = await response.Content.ReadFromJsonAsync<OrderResponse>();
+            if (order is null)
+                return Result.Fail<OrderResponse>(
+                    new ExternalServiceError("Order service returned empty response"));
+
+            return Result.Ok(order);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Order service unavailable");
+            return Result.Fail<OrderResponse>(
+                new ExternalServiceError($"Order service unavailable: {ex.Message}"));
+        }
     }
 }
