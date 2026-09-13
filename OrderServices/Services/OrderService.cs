@@ -1,4 +1,5 @@
-﻿using OrderServices.Model;
+﻿using FluentResults;
+using OrderServices.Model;
 using OrderServices.Repository;
 
 namespace OrderServices.Services;
@@ -7,78 +8,77 @@ public class OrderService(UnitOfWork unitOfWork)
 {
     private readonly UnitOfWork _unitOfWork = unitOfWork;
 
-    public async Task<IEnumerable<Order>> GetUserOrdersById(Guid userId)
+    public async Task<Result<List<Order>>> GetUserOrdersById(Guid userId)
     {
-        return await _unitOfWork.Repository.GetOrdersByUserId(userId);
+        var orders = await _unitOfWork.Repository.GetOrdersByUserId(userId);
+        return Result.Ok(orders);
     }
 
-    public async Task<Order> GetOrderById(Guid orderId, Guid userId)
+    public async Task<Result<Order>> GetOrderById(Guid orderId, Guid userId)
     {
         var order = await _unitOfWork.Repository.GetOrderById(orderId);
         if (order is null)
-            throw new Exception("Cannot find order");
+            return Result.Fail<Order>(new NotFoundError("Cannot find order"));
         if (order.UserId != userId)
-            throw new Exception("Authorization Denied");
-        return order;
+            return Result.Fail<Order>(new ForbiddenError("Authorization Denied"));
+
+        return Result.Ok(order);
     }
-    
-    public async Task<Order> CreateOrderAsync(Guid userId, CreateOrderRequest request)
+
+    public async Task<Result<Order>> CreateOrderAsync(Guid userId, CreateOrderRequest request)
     {
-        // 1. Создаем сущности OrderItem
-        var items = request.Items.Select(i =>  OrderItem.Create(
+        if (request.Items is null || !request.Items.Any())
+            return Result.Fail<Order>(new ValidationError("Order must contain at least one item"));
+
+        var items = request.Items.Select(i => OrderItem.Create(
             productId: i.ProductId,
             productName: i.ProductName,
             quantity: i.Quantity,
             unitPrice: i.UnitPrice
         )).ToList();
 
-        // 2. Создаем заказ
-        var order = Order.Create(
-            userId: userId,
-            items: items,
-            comment: request.Comment
-        );
+        var order = Order.Create(userId, items, request.Comment);
 
-        // 3. Сохраняем в БД
         await _unitOfWork.Repository.CreateOrder(order);
         await _unitOfWork.SaveChangesAsync();
 
-        return order;
+        return Result.Ok(order);
     }
 
-    public async Task<OrderStatus> GetStatus(Guid orderId, Guid userid)
+    public async Task<Result<OrderStatus>> GetStatus(Guid orderId, Guid userId)
     {
         var order = await _unitOfWork.Repository.GetOrderById(orderId);
-        
         if (order is null)
-            throw new Exception("Cannot find order");
-        if (order.UserId != userid)
-            throw new Exception("Authorization Denied");
+            return Result.Fail<OrderStatus>(new NotFoundError("Cannot find order"));
+        if (order.UserId != userId)
+            return Result.Fail<OrderStatus>(new ForbiddenError("Authorization Denied"));
 
-        return order.OrderStatus;
+        return Result.Ok(order.OrderStatus);
     }
 
-    public async Task CancelOrder(Guid orderId, Guid userid)
+    public async Task<Result> CancelOrder(Guid orderId, Guid userId)
     {
         var order = await _unitOfWork.Repository.GetOrderById(orderId);
-        
-        if(order is null)
-            throw new Exception("Cannot find order");
-        if(order.UserId != userid)
-            throw new Exception("Authorization Denied");
-        
+        if (order is null)
+            return Result.Fail(new NotFoundError("Cannot find order"));
+        if (order.UserId != userId)
+            return Result.Fail(new ForbiddenError("Authorization Denied"));
+        if (order.OrderStatus == OrderStatus.Cancelled)
+            return Result.Fail(new ValidationError("Order already cancelled"));
+
         order.OrderStatus = OrderStatus.Cancelled;
         await _unitOfWork.SaveChangesAsync();
+        return Result.Ok();
     }
 
-    public async Task PaymentConfirm(Guid orderId)
+    public async Task<Result> PaymentConfirm(Guid orderId)
     {
         var order = await _unitOfWork.Repository.GetOrderById(orderId);
         if (order is null)
-            throw new Exception("Cannot find order");
+            return Result.Fail(new NotFoundError("Cannot find order"));
+
         order.ConfirmPayment();
         await _unitOfWork.SaveChangesAsync();
-        
+        return Result.Ok();
     }
 }
-

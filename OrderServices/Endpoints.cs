@@ -9,95 +9,76 @@ public static class Endpoints
     public static WebApplication BuildWebApplication(this WebApplication app)
     {
         var group = app.MapGroup("/api/orders");
+
         group.MapGet("/my", async (OrderService order, HttpContext context) =>
         {
             var id = GetId(context);
-            if (id == null)
+            if (id is null)
                 return Results.Unauthorized();
-            var result = await order.GetUserOrdersById(id);
-            if (result.Fail)
-                return Results.BadRequest();
 
-            return Results.Ok(result);
+            var result = await order.GetUserOrdersById(id.Value);
+            return result.ToHttpResult();
         }).RequireAuthorization();
-        
-        group.MapPost("/create", 
-            async (HttpContext context,
-                OrderService order, CreateOrderRequest dto) =>
-        {
-            var id = GetId(context);
-            if (id == null)
-                return Results.Unauthorized();
-            var result = await order.CreateOrderAsync(id, dto);
-            
-            if (result.Fail)
-                return Results.BadRequest();
-            return Results.Ok(result);
-        }).RequireAuthorization();
-        
-        group.MapGet("/{id}",
-                async ([FromRoute] Guid orderId,OrderService order, HttpContext context) =>
+
+        group.MapPost("/create",
+            async (HttpContext context, OrderService order, CreateOrderRequest dto) =>
             {
-                var userid = GetId(context);
-                if (userid == null)
+                var id = GetId(context);
+                if (id is null)
                     return Results.Unauthorized();
 
-                var result = await order.GetOrderById(orderId, userid);
-                
-                if (result.Fail)
-                    return Results.BadRequest();
-                return Results.Ok(result);
-            })
-            .RequireAuthorization();
+                var result = await order.CreateOrderAsync(id.Value, dto);
+                return result.ToHttpResult();
+            }).RequireAuthorization();
+
+        group.MapGet("/{id:guid}",
+            async ([FromRoute] Guid id, OrderService order, HttpContext context) =>
+            {
+                var userId = GetId(context);
+                if (userId is null)
+                    return Results.Unauthorized();
+
+                var result = await order.GetOrderById(id, userId.Value);
+                return result.ToHttpResult();
+            }).RequireAuthorization();
 
         group.MapPatch("/{id:guid}/cancel",
-           async (HttpContext context, OrderService order) =>
-        {
-            var userId = GetId(context);
-            if (userId == null)
-                return Results.Unauthorized();
+            async ([FromRoute] Guid id, HttpContext context, OrderService order) =>
+            {
+                var userId = GetId(context);
+                if (userId is null)
+                    return Results.Unauthorized();
 
-            var result = await order.CancelOrder();
-            
-            if (result.Fail)
-                return Results.BadRequest();
-            return Results.Ok(result);
-        });
+                var result = await order.CancelOrder(id, userId.Value);
+                return result.ToHttpResult();
+            }).RequireAuthorization();
 
         group.MapPost("/{id:guid}/payment-confirm",
-            (HttpContext context, OrderService order) =>
+            async ([FromRoute] Guid id, HttpContext context, OrderService order) =>
             {
-                var IsAnotherService = true;
-                var result = await order.ConfirmPayment();
-                if (result.Fail)
-                    return Results.BadRequest();
-                return Results.Ok();
+                var result = await order.PaymentConfirm(id);
+                return result.ToHttpResult();
             });
 
         group.MapGet("/{id:guid}/status",
-            async ([FromRoute] Guid id,HttpContext context, OrderService order) =>
+            async ([FromRoute] Guid id, HttpContext context, OrderService order) =>
             {
-                var userid = GetId(context);
-                if (userid == null)
+                var userId = GetId(context);
+                if (userId is null)
                     return Results.Unauthorized();
 
-                var result = await order.GetStatus(id, userid);
-                
-                if (result.Fail)
-                    return Results.BadRequest();
-                return Results.Ok(result);
-            });
-        
-        
+                var result = await order.GetStatus(id, userId.Value);
+                return result.ToHttpResult();
+            }).RequireAuthorization();
+
         return app;
     }
 
     public static Guid? GetId(HttpContext context)
     {
-        var id = context.Items["userid"];
-        Guid.TryParse(id?.ToString(), out var userId);
-        if (userId == Guid.Empty || userId == null)
-            return null;
-        return userId;
+        var raw = context.Items["userid"];
+        if (Guid.TryParse(raw?.ToString(), out var userId) && userId != Guid.Empty)
+            return userId;
+        return null;
     }
 }
