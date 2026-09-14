@@ -4,6 +4,8 @@ using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 
+namespace AuthorizationMicroservices;
+
 public class TokenService
 {
     private readonly SymmetricSecurityKey _securityKey;
@@ -15,8 +17,16 @@ public class TokenService
     {
         var secret = config.GetSection("AppSettings:Token").Value;
         _securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-        _issuer = config["JwtIssuer"];
-        _audience = config["JwtAudience"];
+        try
+        {
+            _issuer = config["JwtIssuer"];
+            _audience = config["JwtAudience"];
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("TokenService cannot initialize with the default configuration", ex);
+        }
+
         _refreshTokenCache = cache;
     }
 

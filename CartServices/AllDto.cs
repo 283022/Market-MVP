@@ -29,3 +29,12 @@ public record CartItemDto
     public bool IsStopped { get; init; }
     public string Category { get; init; }
 }
+
+public record ProductDto(
+    Guid Id,
+    string Name,
+    decimal Price,
+    string ImageUrl,
+    bool IsStopped,
+    string Category
+);

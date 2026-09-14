@@ -13,18 +13,10 @@ public static class Endpoints
         // GET /api/menu — получить меню с пагинацией и фильтрацией
         group.MapGet("/", async (
             [AsParameters] MenuQueryParams queryParams,
-            ProductService service,
-            HttpContext context) =>
+            ProductService service) =>
         {
-            try
-            {
-                var result = await service.GetMenuAsync(queryParams);
-                return Results.Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+            var result = await service.GetMenuAsync(queryParams);
+            return result.ToHttpResult();
         });
 
         // GET /api/menu/{id} — получить товар по ID
@@ -32,36 +24,19 @@ public static class Endpoints
             int id,
             ProductService service) =>
         {
-            try
-            {
-                var product = await service.GetByIdAsync(id);
-                return Results.Ok(product);
-            }
-            catch (KeyNotFoundException)
-            {
-                return Results.NotFound(new { error = $"Product with ID {id} not found" });
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+            var result = await service.GetByIdAsync(id);
+            return result.ToHttpResult();
         });
 
         // POST /api/menu — создать новый товар
         group.MapPost("/", async (
             CreateProductDto dto,
-            ProductService service,
-            HttpContext context) =>
+            ProductService service) =>
         {
-            try
-            {
-                var product = await service.CreateAsync(dto);
-                return Results.Created($"/api/menu/{product.Id}", product);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+            var result = await service.CreateAsync(dto);
+
+            return result.ToHttpResult(product =>
+                Results.Created($"/api/menu/{product.Id}", product));
         }).RequireAuthorization("Admin");
 
         // PATCH /api/menu/{id} — обновить товар
@@ -70,19 +45,8 @@ public static class Endpoints
             UpdateProductDto dto,
             ProductService service) =>
         {
-            try
-            {
-                var product = await service.UpdateAsync(id, dto);
-                return Results.Ok(product);
-            }
-            catch (KeyNotFoundException)
-            {
-                return Results.NotFound(new { error = $"Product with ID {id} not found" });
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+            var result = await service.UpdateAsync(id, dto);
+            return result.ToHttpResult();
         }).RequireAuthorization("AdminOrCurator");
 
         // DELETE /api/menu/{id} — удалить товар
@@ -90,19 +54,9 @@ public static class Endpoints
             int id,
             ProductService service) =>
         {
-            try
-            {
-                await service.DeleteAsync(id);
-                return Results.NoContent();
-            }
-            catch (KeyNotFoundException)
-            {
-                return Results.NotFound(new { error = $"Product with ID {id} not found" });
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+            var result = await service.DeleteAsync(id);
+
+            return result.ToHttpResult(() => Results.NoContent());
         }).RequireAuthorization("Admin");
 
         // PATCH /api/menu/{id}/stop — переключить стоп-лист
@@ -111,22 +65,41 @@ public static class Endpoints
             [FromBody] StopProductDto dto,
             ProductService service) =>
         {
-            try
+            var result = await service.ToggleStopAsync(id, dto.IsStopped);
+
+            return result.ToHttpResult(() => Results.Ok(new
             {
-                await service.ToggleStopAsync(id, dto.IsStopped);
-                return Results.Ok(new
-                    { id, isStopped = dto.IsStopped, message = dto.IsStopped ? "Product stopped" : "Product resumed" });
-            }
-            catch (KeyNotFoundException)
-            {
-                return Results.NotFound(new { error = $"Product with ID {id} not found" });
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(ex.Message);
-            }
+                id,
+                isStopped = dto.IsStopped,
+                message = dto.IsStopped ? "Product stopped" : "Product resumed"
+            }));
         }).RequireAuthorization("AdminOrCurator");
-        
+
+        // POST /api/menu/validate — проверить существование товаров
+        group.MapPost("/validate", async (
+            [FromBody] List<Guid> productIds,
+            ProductService service) =>
+        {
+            // TODO: реализовать, когда появится соответствующий метод в ProductService
+            // Пример:
+            // var result = await service.ValidateProductsAsync(productIds);
+            // return result.ToHttpResult();
+            app;
+            return Results.Ok();
+        });
+
+        // POST /api/menu/details — получить детали товаров по списку ID
+        group.MapPost("/details", async (
+            [FromBody] List<int> productIds,
+            ProductService service) =>
+        {
+            // TODO: реализовать, когда появится соответствующий метод в ProductService
+            // Пример:
+            // var result = await service.GetDetailsAsync(productIds);
+            // return result.ToHttpResult();
+            return Results.Ok();
+        });
+
         return app;
     }
 }
