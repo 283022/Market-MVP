@@ -1,7 +1,6 @@
 using System.Text;
 using CartServices;
 using CartServices.Clients;
-using CartServices.Middlewares;
 using CartServices.Repository;
 using CartServices.Service;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -63,7 +62,6 @@ app.UseHttpsRedirection();
 
 //JWT проверка
 app.UseAuthentication();
-app.UseMiddleware<CartSessionMiddleware>();
 app.UseAuthorization();
 
 app.AddEndpoints();

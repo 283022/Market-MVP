@@ -1,4 +1,6 @@
-﻿namespace CartServices.Models;
+﻿using FluentResults;
+
+namespace CartServices.Models;
 
 public class CartItem
 {
@@ -14,17 +16,15 @@ public class CartItem
     private CartItem() { }
 
     //  Фабричный метод
-    public static CartItem Create(Guid cartId, Guid productId, int quantity)
+    public static Result<CartItem> Create(Guid cartId, Guid productId, int quantity)
     {
         if (cartId == Guid.Empty)
-            throw new ArgumentException("CartId cannot be empty", nameof(cartId));
-        
+            return Result.Fail(new ValidationError("cartId cannot be empty"));
         if (productId == Guid.Empty)
-            throw new ArgumentException("ProductId cannot be empty", nameof(productId));
+            return Result.Fail(new ValidationError("productId cannot be empty"));
         
         if (quantity <= 0)
-            throw new ArgumentException("Quantity must be greater than zero", nameof(quantity));
-
+            return Result.Fail(new ValidationError("quantity must be greater than zero"));
         return new CartItem
         {
             Id = Guid.NewGuid(),
@@ -35,19 +35,20 @@ public class CartItem
     }
 
     //  Метод для обновления количества
-    public void UpdateQuantity(int newQuantity)
+    public Result UpdateQuantity(int newQuantity)
     {
         if (newQuantity <= 0)
-            throw new ArgumentException("Quantity must be greater than zero", nameof(newQuantity));
+            return Result.Fail(new ValidationError("Quantity must be greater than zero"));
         
         Quantity = newQuantity;
+        return  Result.Ok();
     }
 
-    public void AddQuantity(int quantityToAdd)
+    public Result AddQuantity(int quantityToAdd)
     {
         if (quantityToAdd <= 0)
-            throw new ArgumentException("Quantity to add must be greater than zero", nameof(quantityToAdd));
-        
+            return Result.Fail(new ValidationError("Quantity must be greater than zero"));
         Quantity += quantityToAdd;
+        return Result.Ok();
     }
 }

@@ -3,7 +3,7 @@ using FluentResults;
 
 namespace CartServices.Clients;
 
-public class MenuClient
+public class MenuClient : IMenuClient
 {
     private readonly HttpClient _client;
     private readonly ILogger<MenuClient> _logger;
@@ -13,7 +13,7 @@ public class MenuClient
         _client = client;
         _logger = logger;
     }
-
+    //TODO: реализовать контракты
     public async Task<Result<ProductDto?>> GetProductAsync(Guid productId)
     {
         try

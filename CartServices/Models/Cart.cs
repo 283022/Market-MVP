@@ -1,91 +1,167 @@
-﻿namespace CartServices.Models;
+﻿using FluentResults;
+
+namespace CartServices.Models;
 
 public class Cart
 {
-    public Guid Id { get; private set; }
-    public Guid? UserId { get; private set; }      // null = анонимная корзина
-    public string? SessionId { get; private set; } // для анонимных пользователей
+    public Guid CartId { get; private set; }
+    public Guid? UserId { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
-    
+
     // Navigation
     public List<CartItem> Items { get; private set; } = new();
 
-    // Приватный конструктор (для EF Core и фабрики)
-    private Cart(Guid userId, string? sessionId)
+    // Для EF Core
+    private Cart()
     {
-        Id = Guid.NewGuid();
-        UserId = userId == Guid.Empty ? null : userId;
-        SessionId = sessionId;
+    }
+
+    private Cart(Guid? userId)
+    {
+        UserId = userId;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = DateTime.UtcNow;
     }
-    
-    private Cart() { }
 
-    //  Фабричный метод
-    public static Cart Create(Guid? userId, string? sessionId)
-    {
-        if (!userId.HasValue && string.IsNullOrEmpty(sessionId))
-            throw new ArgumentException("Either UserId or SessionId must be provided");
-        
-        if (userId.HasValue && !string.IsNullOrEmpty(sessionId))
-        {
-            return new Cart(userId.Value, null);
-        }
-        //  Анонимный пользователь
-        if (!userId.HasValue && !string.IsNullOrEmpty(sessionId))
-        {
-            return new Cart(Guid.Empty, sessionId);
-        }
-
-        //  Авторизованный пользователь без сессии
-        return new Cart(userId.Value, null);
-    }
-
-    //  Методы для изменения состояния
-    public void UpdateTimestamp()
-    {
-        UpdatedAt = DateTime.UtcNow;
-    }
-
-    public void AssignToUser(Guid userId)
+    public static Cart Create(Guid? userId)
     {
         if (userId == Guid.Empty)
-            throw new ArgumentException("UserId cannot be empty", nameof(userId));
+            userId = null;
 
-        UserId = userId;
-        SessionId = null; // Очищаем анонимную сессию
-        UpdatedAt = DateTime.UtcNow;
+        return new Cart(userId);
     }
 
-    public void AddItem(CartItem item)
+    public Result AssignToUser(Guid userId)
     {
-        if (item == null)
-            throw new ArgumentNullException(nameof(item));
-
-        // Проверяем, есть ли уже такой товар
-        var existingItem = Items.FirstOrDefault(i => i.ProductId == item.ProductId);
-        if (existingItem != null)
+        if (userId == Guid.Empty)
         {
-            existingItem.AddQuantity(item.Quantity) ;
+            return Result.Fail(
+                new ValidationError(
+                    "User id cannot be empty"));
+        }
+
+        UserId = userId;
+        UpdatedAt = DateTime.UtcNow;
+
+        return Result.Ok();
+    }
+
+    public Result AddItem(CartItem item)
+    {
+        if (item is null)
+        {
+            return Result.Fail(
+                new ValidationError(
+                    "Item cannot be null"));
+        }
+
+        if (item.ProductId == Guid.Empty)
+        {
+            return Result.Fail(
+                new ValidationError(
+                    "Product id cannot be empty"));
+        }
+
+        var existingItem = Items.FirstOrDefault(
+            i => i.ProductId == item.ProductId);
+
+        if (existingItem is not null)
+        {
+            var result = existingItem.AddQuantity(
+                item.Quantity);
+
+            if (result.IsFailed)
+                return result;
         }
         else
         {
             Items.Add(item);
         }
-        
+
         UpdatedAt = DateTime.UtcNow;
+
+        return Result.Ok();
     }
 
-    public void RemoveItem(Guid itemId)
+    public Result UpdateItemQuantity(
+        Guid itemId,
+        int quantity)
     {
-        var item = Items.FirstOrDefault(i => i.Id == itemId);
-        if (item != null)
+        var item = Items.FirstOrDefault(
+            i => i.Id == itemId);
+
+        if (item is null)
+        {
+            return Result.Fail(
+                new NotFoundError(
+                    $"Item {itemId} not found in cart"));
+        }
+
+        if (quantity == 0)
         {
             Items.Remove(item);
             UpdatedAt = DateTime.UtcNow;
+
+            return Result.Ok();
         }
+
+        var result = item.UpdateQuantity(quantity);
+
+        if (result.IsFailed)
+            return result;
+
+        UpdatedAt = DateTime.UtcNow;
+
+        return Result.Ok();
+    }
+
+    public Result RemoveItem(Guid itemId)
+    {
+        var item = Items.FirstOrDefault(
+            i => i.Id == itemId);
+
+        if (item is null)
+        {
+            return Result.Fail(
+                new NotFoundError(
+                    $"Item {itemId} not found in cart"));
+        }
+
+        Items.Remove(item);
+        UpdatedAt = DateTime.UtcNow;
+
+        return Result.Ok();
+    }
+
+    public Result RemoveItems(IEnumerable<Guid> itemIds)
+    {
+        var ids = itemIds.ToHashSet();
+
+        if (ids.Count == 0)
+        {
+            return Result.Fail(
+                new ValidationError(
+                    "Item ids must not be empty"));
+        }
+
+        var missingIds = ids
+            .Except(Items.Select(i => i.Id))
+            .ToList();
+
+        if (missingIds.Count > 0)
+        {
+            return Result.Fail(
+                missingIds.Select(id =>
+                    (IError)new NotFoundError(
+                        $"Item {id} not found in cart")));
+        }
+
+        Items.RemoveAll(i => ids.Contains(i.Id));
+        UpdatedAt = DateTime.UtcNow;
+
+        return Result.Ok();
     }
 
     public void ClearItems()
@@ -93,4 +169,10 @@ public class Cart
         Items.Clear();
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public void UpdateTimestamp()
+    {
+        UpdatedAt = DateTime.UtcNow;
+    }
 }
+
