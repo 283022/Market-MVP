@@ -5,54 +5,88 @@ namespace AuthorizationMicroservices;
 
 public class UserService(Hasher hasher)
 {
+    //TODO: сделать бд
     private readonly List<User> _users = [];
     private readonly Hasher _hasher = hasher;
-
-    public Result<Guid> AddUser(string username, string email, string password)
+    
+    //TODO: добавить метод delete user 
+    public Result<Guid> AddUser(
+        string username,
+        string email,
+        string password)
     {
-        var errors = Validate(username, email, password);
-        if (errors.Count == 0)
-            return Result.Fail<Guid>(errors);
+        // Проверяем данные, которые пришли от пользователя
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email)
+                                                || string.IsNullOrWhiteSpace(password))
+            return Result.Fail("data cannot be null");
+        
+        // Проверяем уникальность email
+        if (_users.Any(u =>
+                u.Email.Equals(
+                    email,
+                    //TODO: когда будет value object Email перенести это туда
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return Result.Fail<Guid>(
+                new ConflictError(
+                    "User with this email already exists"));
+        }
 
-        if (_users.Any(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
-            return Result.Fail<Guid>(new ConflictError("User with this email already exists"));
+        // Пароль не храним в открытом виде
+        //TODO: пока что эта логика остается тут, но когда будут Value Object перенести валидацию в Password 
+        var passwordHash = _hasher.Hash(password);
 
-        var user = User.Create(username, email, _hasher.Hash(password));
+        // User.Create возвращает Result<User>
+        var userResult = User.Create(
+            username,
+            email,
+            passwordHash);
+
+        // Если модель не прошла свою валидацию
+        if (userResult.IsFailed)
+            return Result.Fail<Guid>(userResult.Errors);
+
+        // Получаем самого User из Result
+        var user = userResult.Value;
+
         _users.Add(user);
 
         return Result.Ok(user.Id);
     }
 
-    public Result<Guid> Login(string email, string password)
+    public Result<Guid> Login(
+        string email,
+        string password)
     {
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-            return Result.Fail<Guid>(new ValidationError("Email and password are required"));
+        // Проверяем обязательные поля
+        if (string.IsNullOrWhiteSpace(email) ||
+            string.IsNullOrWhiteSpace(password))
+        {
+            return Result.Fail<Guid>(
+                new ValidationError(
+                    "Email and password are required"));
+        }
 
+        // Ищем пользователя по email
         var user = _users.FirstOrDefault(u =>
-            u.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+            u.Email.Equals(
+                email,
+                StringComparison.OrdinalIgnoreCase));
 
-        // Не раскрываем, что именно неверно (email или пароль)
-        if (user is null || !_hasher.Verify(user.HashPasswd, password))
-            return Result.Fail<Guid>(new AuthError("Invalid email or password"));
+        // Не раскрываем, существует ли такой email.
+        // Для неправильного email и неправильного пароля
+        // возвращаем одну и ту же ошибку.
+        if (user is null ||
+            !_hasher.Verify(
+                user.PasswordHash,
+                password))
+        {
+            return Result.Fail<Guid>(
+                new AuthError(
+                    "Invalid email or password"));
+        }
 
         return Result.Ok(user.Id);
     }
-
-    private static List<IError> Validate(string username, string email, string password)
-    {
-        var errors = new List<IError>();
-
-        if (string.IsNullOrWhiteSpace(username))
-            errors.Add(new ValidationError("Username is required"));
-
-        if (string.IsNullOrWhiteSpace(email))
-            errors.Add(new ValidationError("Email is required"));
-
-        if (string.IsNullOrWhiteSpace(password))
-            errors.Add(new ValidationError("Password is required"));
-        else if (password.Length < 6)
-            errors.Add(new ValidationError("Password must be at least 6 characters"));
-
-        return errors;
-    }
+    
 }

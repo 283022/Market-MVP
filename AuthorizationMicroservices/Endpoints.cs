@@ -22,7 +22,7 @@ public static class Endpoints
         });
 
         app.MapPost("/login", (
-            LoginRequest request,
+            LoginDto request,
             UserService userService,
             TokenService tokenService,
             HttpContext context) =>

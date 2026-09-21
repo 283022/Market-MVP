@@ -16,16 +16,14 @@ public class TokenService
     public TokenService(IConfiguration config, IMemoryCache cache)
     {
         var secret = config.GetSection("AppSettings:Token").Value;
+        if (string.IsNullOrEmpty(secret))
+            throw new InvalidOperationException("AppSettings:Token is not configured");
         _securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-        try
-        {
-            _issuer = config["JwtIssuer"];
-            _audience = config["JwtAudience"];
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("TokenService cannot initialize with the default configuration", ex);
-        }
+        
+        _issuer = config["JwtIssuer"];
+        _audience = config["JwtAudience"];
+        if (string.IsNullOrEmpty(_audience) ||  string.IsNullOrEmpty(_issuer))
+            throw new InvalidOperationException("AppSettings:Token is not configured");
 
         _refreshTokenCache = cache;
     }
@@ -35,11 +33,10 @@ public class TokenService
         var tokenHandler = new JwtSecurityTokenHandler();
         var tokenDescriptor = new SecurityTokenDescriptor
         {
-            Subject = new ClaimsIdentity(new[]
-            {
+            Subject = new ClaimsIdentity([
                 new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            }),
+            ]),
             Expires = DateTime.UtcNow.AddMinutes(15),
             Issuer = _issuer,
             Audience = _audience,
@@ -56,6 +53,7 @@ public class TokenService
         return refreshToken;
     }
 
+    //TODO: когда реализация будет через бд, важно чтобы валидировалось время рефреш токена
     public bool ValidateRefreshToken(string refreshToken, out Guid userId)
     {
         userId = Guid.Empty;
@@ -63,14 +61,13 @@ public class TokenService
         // Проверяем, есть ли токен в кеше
         if (!_refreshTokenCache.TryGetValue(refreshToken, out Guid cachedUserId))
             return false;
-
         userId = cachedUserId;
         return true;
     }
 
     public void StoreRefreshToken(string refreshToken, Guid userId, TimeSpan expiry)
     {
-        _refreshTokenCache.Set(refreshToken, userId, expiry);
+        _refreshTokenCache.Set(refreshToken, userId,expiry);
     }
 
     public void RevokeRefreshToken(string refreshToken)
