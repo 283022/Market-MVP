@@ -6,9 +6,15 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 
-var secret = builder.Configuration.GetSection("AppSettings:Token").Value;
-var issuer = builder.Configuration["JwtIssuer"];
-var audience = builder.Configuration["JwtAudience"];
+var secret = builder.Configuration.GetSection("AppSettings:Token").Value ?? throw new InvalidOperationException("Missing configuration Token");
+var issuer = builder.Configuration["JwtIssuer"]
+              ?? throw new InvalidOperationException(
+                  "JwtIssuer is not configured");
+
+var audience = builder.Configuration["JwtAudience"]
+                ?? throw new InvalidOperationException(
+                    "JwtAudience is not configured");
+
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

@@ -13,13 +13,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         modelBuilder.Entity<Cart>(entity =>
         {
-            entity.HasKey(c => c.Id);
+            entity.HasKey(c => c.CartId);
             
             entity.HasIndex(c => c.UserId)
                 .HasDatabaseName("IX_Carts_UserId");
             
-            entity.HasIndex(c => c.SessionId)
-                .HasDatabaseName("IX_Carts_SessionId");
             
             entity.HasIndex(c => c.UpdatedAt)
                 .HasDatabaseName("IX_Carts_UpdatedAt");

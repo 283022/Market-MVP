@@ -6,13 +6,13 @@ namespace CartServices.Repository;
 public class UnitOfWork(
     AppDbContext context,
     ILogger<UnitOfWork> logger,
-    CartRepository cartRepository)
-    : IDisposable
+    ICartRepository cartRepository)
+    : IDisposable, IUnitOfWork
 {
     private IDbContextTransaction _transaction = null;
     private bool _disposed;
-
-    public CartRepository Carts { get; } = cartRepository;
+    //TODO: тут столько говна
+    public ICartRepository Carts { get; } = cartRepository;
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

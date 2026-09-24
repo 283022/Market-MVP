@@ -1,254 +1,491 @@
 ﻿using CartServices.Clients;
 using CartServices.Models;
 using CartServices.Repository;
+using FluentResults;
 
 namespace CartServices.Service;
 
 public class CartService
 {
-    private readonly UnitOfWork _unitOfWork;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CartService> _logger;
-    private readonly MenuClient _menuClient;
+    private readonly IMenuClient _menuClient;
 
     public CartService(
-        UnitOfWork unitOfWork,
-        ILogger<CartService> logger, MenuClient menuClient)
+        IUnitOfWork unitOfWork,
+        ILogger<CartService> logger,
+        IMenuClient menuClient)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _menuClient = menuClient;
     }
 
-    //Get
-    public async Task<CartDto> GetCartAsync(Guid? userId, string? sessionId)
+    public async Task<Result<CartDto>> CreateAsync(Guid? userId,Guid? cartId)
     {
-        Cart? cart = null;
+        // У авторизованного пользователя может быть только одна корзина.
         if (userId.HasValue)
         {
-            cart = await _unitOfWork.Carts.GetByUserIdWithItemsAsync(userId.Value);
+            var existingCart = await _unitOfWork.Carts
+                .GetByUserIdAsync(userId.Value);
+
+            if (existingCart is not null)
+            {
+                return Result.Fail<CartDto>(
+                    new ConflictError("User already has a cart"));
+            }
         }
-        else if (!string.IsNullOrEmpty(sessionId))
+        if (cartId.HasValue)
+            return Result.Fail<CartDto>(
+            new ConflictError("Useralready has a cart"));
+
+        var cart = Cart.Create(userId);
+
+        await _unitOfWork.Carts.AddAsync(cart);
+        await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Created cart {CartId} for user {UserId}",
+            cart.CartId,
+            cart.UserId);
+
+        return Result.Ok(MapToDto(cart));
+    }
+    
+    public async Task<Result<CartDto>> GetCartAsync(
+        Guid? userId,
+        Guid? cartId)
+    {
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
+
+        if (cart is null)
         {
-            cart = await _unitOfWork.Carts.GetBySessionIdWithItemsAsync(sessionId);
+            return Result.Ok(new CartDto
+            {
+                Items = new List<CartItemDto>()
+            });
         }
 
-        if (cart == null)
-            throw new Exception();
-        var result = MapToDto(cart);
-
-        return result ?? throw new Exception();
+        return Result.Ok(MapToDto(cart));
     }
 
-    public async Task<int> GetCartCountAsync(Guid? userId, string? sessionId)
+    public async Task<Result<int>> GetCartCountAsync(
+        Guid? userId,
+        Guid? cartId)
     {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        return cart?.Items?.Sum(i => i.Quantity) ?? 0;
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
+
+        return Result.Ok(
+            cart?.Items.Sum(i => i.Quantity) ?? 0);
     }
 
-
-    public async Task<CartDto> AddItemAsync(Guid? userId, string? sessionId, AddCartItemRequest request)
+    public async Task<Result<CartDto>> AddItemAsync(
+        Guid? userId,
+        Guid? cartId,
+        AddCartItemRequest request)
     {
-        // 1. Получаем данные товара из Menu Service
-        var product = await _menuClient.GetProductAsync(request.ProductId);
-        if (product == null)
-            throw new Exception($"Product {request.ProductId} not found");
+        if (request.Quantity <= 0)
+        {
+            return Result.Fail<CartDto>(
+                new ValidationError(
+                    "Quantity must be greater than zero"));
+        }
+
+        // Проверяем товар через Menu Service.
+        var productResult =
+            await _menuClient.GetProductAsync(
+                request.ProductId);
+
+        if (productResult.IsFailed)
+        {
+            return Result.Fail<CartDto>(
+                productResult.Errors);
+        }
+
+        var product = productResult.Value;
+
+        if (product is null)
+        {
+            return Result.Fail<CartDto>(
+                new NotFoundError(
+                    $"Product {request.ProductId} not found"));
+        }
 
         if (product.IsStopped)
-            throw new Exception($"Product  is stopped");
-
-        // 2. Получаем или создаем корзину
-        var cart = await GetOrCreateCartAsync(userId, sessionId);
-
-        // 3. Добавляем товар
-        var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == request.ProductId);
-        if (existingItem != null)
         {
-            existingItem.UpdateQuantity(request.Quantity);
-        }
-        else
-        {
-            cart.Items.Add(
-                CartItem.Create(cart.Id, request.ProductId, request.Quantity)
-            );
+            return Result.Fail<CartDto>(
+                new CartStateError(
+                    $"Product {request.ProductId} is stopped"));
         }
 
-        cart.UpdateTimestamp();
+        // Получаем или создаём корзину.
+        var cartResult =
+            await GetOrCreateCartAsync(
+                userId,
+                cartId);
+
+        if (cartResult.IsFailed)
+        {
+            return Result.Fail<CartDto>(
+                cartResult.Errors);
+        }
+
+        var cart = cartResult.Value;
+
+        // Создаём CartItem.
+        var itemResult = CartItem.Create(
+            cart.CartId,
+            request.ProductId,
+            request.Quantity);
+
+        if (itemResult.IsFailed)
+        {
+            return Result.Fail<CartDto>(
+                itemResult.Errors);
+        }
+
+        // Cart сам решает:
+        // добавить новый item или увеличить существующий.
+        var addResult = cart.AddItem(
+            itemResult.Value);
+
+        if (addResult.IsFailed)
+        {
+            return Result.Fail<CartDto>(
+                addResult.Errors);
+        }
+
         await _unitOfWork.Carts.UpdateAsync(cart);
         await _unitOfWork.SaveChangesAsync();
 
-        return MapToDto(cart);
+        return Result.Ok(MapToDto(cart));
     }
 
-    // UPDATE 
-
-    public async Task UpdateItemQuantityAsync(Guid? userId, string? sessionId, Guid itemId, int quantity)
+    public async Task<Result> UpdateItemQuantityAsync(
+        Guid? userId,
+        Guid? cartId,
+        Guid itemId,
+        int quantity)
     {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        if (cart == null)
-            throw new Exception("Cart not found");
-
-        var item = cart.Items.FirstOrDefault(i => i.Id == itemId);
-        if (item == null)
-            throw new Exception($"Item {itemId} not found in cart");
-
-        // количество должно быть >= 0
         if (quantity < 0)
-            throw new Exception("Quantity cannot be negative");
-
-        // Если количество = 0 — удаляем товар
-        if (quantity == 0)
         {
-            cart.Items.Remove(item);
-            _logger.LogDebug("Removed item: {ItemId}", itemId);
-        }
-        else
-        {
-            item.UpdateQuantity(quantity);
-            cart.UpdateTimestamp();
-            _logger.LogDebug("Updated item quantity: {ItemId} x {Quantity}", itemId, quantity);
+            return Result.Fail(
+                new ValidationError(
+                    "Quantity cannot be negative"));
         }
 
-        await _unitOfWork.Carts.UpdateAsync(cart);
-        await _unitOfWork.SaveChangesAsync();
-    }
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
 
-    //delete
+        if (cart is null)
+        {
+            return Result.Fail(
+                new NotFoundError(
+                    "Cart not found"));
+        }
 
-    public async Task RemoveItemAsync(Guid? userId, string? sessionId, Guid itemId)
-    {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        if (cart == null)
-            throw new Exception("Cart not found");
+        var result = cart.UpdateItemQuantity(
+            itemId,
+            quantity);
 
-        var item = cart.Items.FirstOrDefault(i => i.Id == itemId);
-        if (item == null)
-            throw new Exception($"Item {itemId} not found in cart");
-
-        cart.Items.Remove(item);
-        cart.UpdateTimestamp();
-
-        await _unitOfWork.Carts.UpdateAsync(cart);
-        await _unitOfWork.SaveChangesAsync();
-    }
-
-    public async Task RemoveItemsAsync(Guid? userId, string? sessionId, List<Guid> itemIds)
-    {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        if (cart == null)
-            throw new Exception("Cart not found");
-
-        cart.Items.RemoveAll(i => itemIds.Contains(i.Id));
-        cart.UpdateTimestamp();
+        if (result.IsFailed)
+        {
+            return result;
+        }
 
         await _unitOfWork.Carts.UpdateAsync(cart);
         await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogDebug(
+            "Updated item {ItemId} in cart {CartId}",
+            itemId,
+            cart.CartId);
+
+        return Result.Ok();
     }
 
-    public async Task ClearCartAsync(Guid? userId, string? sessionId)
+    public async Task<Result> RemoveItemAsync(
+        Guid? userId,
+        Guid? cartId,
+        Guid itemId)
     {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        if (cart == null) return;
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
 
-        cart.Items.Clear();
-        cart.UpdateTimestamp();
+        if (cart is null)
+        {
+            return Result.Fail(
+                new NotFoundError(
+                    "Cart not found"));
+        }
+
+        var result = cart.RemoveItem(itemId);
+
+        if (result.IsFailed)
+        {
+            return result;
+        }
 
         await _unitOfWork.Carts.UpdateAsync(cart);
         await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogDebug(
+            "Removed item {ItemId} from cart {CartId}",
+            itemId,
+            cart.CartId);
+
+        return Result.Ok();
     }
 
-
-    public async Task MergeCartsAsync(Guid userId, string? sessionId)
+    public async Task<Result> RemoveItemsAsync(
+        Guid? userId,
+        Guid? cartId,
+        List<Guid> itemIds)
     {
-        if (string.IsNullOrEmpty(sessionId))
-            throw new Exception("У пользователя нет корзины");
+        if (itemIds is null || itemIds.Count == 0)
+        {
+            return Result.Fail(
+                new ValidationError(
+                    "itemIds must not be empty"));
+        }
 
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
+
+        if (cart is null)
+        {
+            return Result.Fail(
+                new NotFoundError(
+                    "Cart not found"));
+        }
+
+        var result = cart.RemoveItems(itemIds);
+
+        if (result.IsFailed)
+        {
+            return result;
+        }
+
+        await _unitOfWork.Carts.UpdateAsync(cart);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Ok();
+    }
+
+    public async Task<Result> ClearCartAsync(
+        Guid? userId,
+        Guid? cartId)
+    {
+        var cart = await GetCartEntityAsync(
+            userId,
+            cartId);
+
+        if (cart is null)
+        {
+            return Result.Ok();
+        }
+
+        cart.ClearItems();
+
+        await _unitOfWork.Carts.UpdateAsync(cart);
+        await _unitOfWork.SaveChangesAsync();
+
+        return Result.Ok();
+    }
+
+    public async Task<Result> MergeCartsAsync(
+        Guid userId,
+        Guid anonymousCartId)
+    {
         await _unitOfWork.BeginTransactionAsync();
 
         try
         {
-            // 1. Получаем корзины
-            var userCart = await _unitOfWork.Carts.GetByUserIdWithItemsAsync(userId);
-            var sessionCart = await _unitOfWork.Carts.GetBySessionIdWithItemsAsync(sessionId);
+            var userCart =
+                await _unitOfWork.Carts
+                    .GetByUserIdAsync(userId);
 
-            // 2. Если анонимной корзины нет — просто возвращаем пользовательскую
-            if (sessionCart == null || !sessionCart.Items.Any())
+            var anonymousCart =
+                await _unitOfWork.Carts
+                    .GetByIdAsync(anonymousCartId);
+
+            if (anonymousCart is null)
             {
-                await _unitOfWork.Carts.DeleteAsync(sessionCart);
+                await _unitOfWork.CommitTransactionAsync();
+
+                return Result.Ok();
+            }
+
+            // Корзина должна быть анонимной.
+            if (anonymousCart.UserId.HasValue)
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+
+                return Result.Fail(
+                    new CartStateError(
+                        "Cart is already assigned to a user"));
+            }
+
+            // У пользователя нет своей корзины.
+            // Просто передаём ему анонимную.
+            if (userCart is null)
+            {
+                var assignResult =
+                    anonymousCart.AssignToUser(userId);
+
+                if (assignResult.IsFailed)
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+
+                    return assignResult;
+                }
+
+                await _unitOfWork.Carts.UpdateAsync(
+                    anonymousCart);
+
                 await _unitOfWork.SaveChangesAsync();
                 await _unitOfWork.CommitTransactionAsync();
-                return;
+
+                return Result.Ok();
             }
 
-            // 3. Если у пользователя нет корзины — переносим анонимную
-            if (userCart == null)
+            // У пользователя уже есть корзина.
+            // Добавляем в неё все товары из анонимной.
+            foreach (var anonymousItem in anonymousCart.Items)
             {
-                sessionCart.AssignToUser(userId);
-                await _unitOfWork.Carts.UpdateAsync(sessionCart);
-                await _unitOfWork.SaveChangesAsync();
-                await _unitOfWork.CommitTransactionAsync();
-                return;
-            }
+                var itemResult = CartItem.Create(
+                    userCart.CartId,
+                    anonymousItem.ProductId,
+                    anonymousItem.Quantity);
 
-            // 4. Объединяем корзины
-            foreach (var sessionItem in sessionCart.Items)
-            {
-                var existingItem = userCart.Items
-                    .FirstOrDefault(i => i.ProductId == sessionItem.ProductId);
-
-                if (existingItem != null)
+                if (itemResult.IsFailed)
                 {
-                    existingItem.AddQuantity(sessionItem.Quantity);
+                    await _unitOfWork.RollbackTransactionAsync();
+
+                    return Result.Fail(
+                        itemResult.Errors);
                 }
-                else
+
+                var addResult = userCart.AddItem(
+                    itemResult.Value);
+
+                if (addResult.IsFailed)
                 {
-                    userCart.Items.Add(CartItem.Create(
-                        userCart.Id,
-                        sessionItem.ProductId,
-                        sessionItem.Quantity));
+                    await _unitOfWork.RollbackTransactionAsync();
+
+                    return addResult;
                 }
             }
 
-            // 5. Удаляем анонимную корзину
-            await _unitOfWork.Carts.DeleteAsync(sessionCart);
+            await _unitOfWork.Carts.UpdateAsync(
+                userCart);
 
-            userCart.UpdateTimestamp();
-            await _unitOfWork.Carts.UpdateAsync(userCart);
+            await _unitOfWork.Carts.DeleteAsync(
+                anonymousCart);
+
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
 
-            _logger.LogInformation("Merged session cart {SessionId} into user cart {UserId}", sessionId, userId);
+            _logger.LogInformation(
+                "Merged anonymous cart {AnonymousCartId} " +
+                "into user cart {UserCartId} for user {UserId}",
+                anonymousCart.CartId,
+                userCart.CartId,
+                userId);
+
+            return Result.Ok();
         }
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync();
-            _logger.LogError(ex, "Error merging carts");
-            throw;
+
+            _logger.LogError(
+                ex,
+                "Error merging cart {AnonymousCartId} " +
+                "for user {UserId}",
+                anonymousCartId,
+                userId);
+
+            return Result.Fail(
+                new ExternalServiceError(
+                    $"Не удалось объединить корзины: {ex.Message}"));
         }
     }
+    
+    
+    
 
-    //HELPERS
-
-    private async Task<Cart> GetOrCreateCartAsync(Guid? userId, string? sessionId)
+    private async Task<Result<Cart>> GetOrCreateCartAsync(
+        Guid? userId,
+        Guid? cartId)
     {
-        var cart = await GetCartEntityAsync(userId, sessionId);
-        if (cart != null) return cart;
-
-        cart = Cart.Create(
+        var cart = await GetCartEntityAsync(
             userId,
-            sessionId);
+            cartId);
+
+        if (cart is not null)
+        {
+            return Result.Ok(cart);
+        }
+
+        // Новая анонимная корзина.
+        if (!userId.HasValue && !cartId.HasValue)
+        {
+            cart = Cart.Create(null);
+        }
+        // Новая корзина авторизованного пользователя.
+        else if (userId.HasValue)
+        {
+            cart = Cart.Create(userId);
+        }
+        // CartId был передан, но такой корзины нет.
+        else
+        {
+            return Result.Fail<Cart>(
+                new NotFoundError(
+                    $"Cart {cartId} not found"));
+        }
+
         await _unitOfWork.Carts.AddAsync(cart);
         await _unitOfWork.SaveChangesAsync();
 
-        return cart;
+        return Result.Ok(cart);
     }
 
-    private async Task<Cart?> GetCartEntityAsync(Guid? userId, string? sessionId)
+    private async Task<Cart?> GetCartEntityAsync(
+        Guid? userId,
+        Guid? cartId)
     {
+        // Авторизованный пользователь.
         if (userId.HasValue)
-            return await _unitOfWork.Carts.GetByUserIdWithItemsAsync(userId.Value);
+        {
+            return await _unitOfWork.Carts
+                .GetByUserIdAsync(userId.Value);
+        }
 
-        if (!string.IsNullOrEmpty(sessionId))
-            return await _unitOfWork.Carts.GetBySessionIdWithItemsAsync(sessionId);
+        // Анонимный пользователь.
+        if (cartId.HasValue)
+        {
+            var cart =
+                await _unitOfWork.Carts
+                    .GetByIdAsync(cartId.Value);
+
+            // Авторизованную корзину нельзя
+            // использовать как анонимную.
+            if (cart?.UserId is not null)
+            {
+                return null;
+            }
+
+            return cart;
+        }
 
         return null;
     }
@@ -257,14 +494,18 @@ public class CartService
     {
         return new CartDto
         {
-            Id = cart.Id,
+            Id = cart.CartId,
             UserId = cart.UserId,
-            Items = cart.Items.Select(i => new CartItemDto
-            {
-                Id = i.Id,
-                ProductId = i.ProductId,
-                Quantity = i.Quantity,
-            }).ToList(),
+
+            Items = cart.Items
+                .Select(i => new CartItemDto
+                {
+                    Id = i.Id,
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity
+                })
+                .ToList(),
+
             UpdatedAt = cart.UpdatedAt
         };
     }

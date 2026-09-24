@@ -1,7 +1,6 @@
 using System.Text;
 using CartServices;
 using CartServices.Clients;
-using CartServices.Middlewares;
 using CartServices.Repository;
 using CartServices.Service;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -9,6 +8,8 @@ using Microsoft.IdentityModel.Tokens;
 using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
+
+//TODO: настроить общение сервисов.
 
 // JWT настройки
 var jwtSecret = builder.Configuration["Jwt:Secret"] 
@@ -61,7 +62,6 @@ app.UseHttpsRedirection();
 
 //JWT проверка
 app.UseAuthentication();
-app.UseMiddleware<CartSessionMiddleware>();
 app.UseAuthorization();
 
 app.AddEndpoints();

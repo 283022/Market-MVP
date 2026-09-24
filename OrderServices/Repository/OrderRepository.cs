@@ -8,19 +8,28 @@ public class OrderRepository(ApplicationDbContext context)
 {
     private readonly ApplicationDbContext _context = context;
 
-    public async Task<List<Order>> GetOrdersByUserId(Guid userId)
+    public async Task<IReadOnlyList<Order>> GetOrdersByUserId(
+        Guid userId,
+        CancellationToken cancellationToken = default)
     {
-        return await _context.Orders.Where(x => x.UserId == userId).ToListAsync();
-        
+        return await _context.Orders
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .ToListAsync(cancellationToken);
     }
 
-    public async Task CreateOrder(Order order)
+    public async Task<Order?> GetOrderById(
+        Guid orderId,
+        CancellationToken cancellationToken = default)
     {
-        await _context.Orders.AddAsync(order);
+        return await _context.Orders
+            .FirstOrDefaultAsync(x => x.Id == orderId, cancellationToken);
     }
 
-    public async Task<Order?> GetOrderById(Guid orderId)
+    public async Task AddAsync(
+        Order order,
+        CancellationToken cancellationToken = default)
     {
-        return await _context.Orders.FirstOrDefaultAsync(x => x.Id == orderId);
+        await _context.Orders.AddAsync(order, cancellationToken);
     }
 }
